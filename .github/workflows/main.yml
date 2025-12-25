@@ -53,18 +53,20 @@ jobs:
 
   # Job pour le déploiement
   deploy:
-    needs: tests # Dépend du job "tests"
-    runs-on: ubuntu-latest # Exécute sur la dernière version d'Ubuntu
-    steps:
-      - name: checkout le code # Récupère le code source
-        uses: actions/checkout@v4 # Utilise l'action de checkout
+     needs: tests
+     runs-on: ubuntu-latest
+     steps:
+       - name: Checkout le code
+         uses: actions/checkout@v4
+       - name: Déployer sur le serveur
+         run: |
+          eval $(ssh-agent -s)
+          ssh-add - <<< "${{ secrets.SSH_KEY_VPS }}"
+          mkdir -p ~/.ssh
+          ssh-keyscan -H $SERVER_IP >> ~/.ssh/known_hosts
 
-      - name: déployer sur le serveur # Étape de déploiement
-        run: | # Commandes shell à exécuter
-          eval $(ssh-agent -s)  # Initialise l'agent SSH
-          ssh-add - <<< "${{ secrets.SSH_KEY_VPS }}"  # Ajoute la clé SSH privée
-          mkdir -p ~/.ssh  # Crée le dossier .ssh si nécessaire
-          ssh-keyscan -H $SERVER_IP >> ~/.ssh/known_hosts  # Ajoute le serveur aux hôtes connus
-          scp -r ./server $SERVER_USER@$SERVER_IP:/var/www  # Copie le code sur le serveur
-          ssh $SERVER_USER@$SERVER_IP "cd /var/www/server && npm install --omit=dev"  # Installe les dépendances sur le serveur
-          ssh $SERVER_USER@$SERVER_IP "cd /var/www/server && pm2 startOrRestart ecosystem.config.js --env production && pm2 save"  # Démarre ou redémarre le service avec pm2
+          rsync -avz --delete ./server/ $SERVER_USER@$SERVER_IP:/var/www/server/
+
+          ssh $SERVER_USER@$SERVER_IP "cd /var/www/server && npm install --omit=dev --no-audit --no-fund"
+          ssh $SERVER_USER@$SERVER_IP "npm install -g pm2"
+          ssh $SERVER_USER@$SERVER_IP "cd /var/www/server && pm2 startOrRestart ecosystem.config.js --env production && pm2 save"
