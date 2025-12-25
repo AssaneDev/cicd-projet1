@@ -43,10 +43,7 @@ jobs:
         run: npm run lint
 
       - name: Vérifier les vulnérabilités
-        run: |
-          cd client
-          npm audit --audit-level=high || true
-
+        run: npm audit
 
       - name: Upload du rapport de couverture
         uses: codecov/codecov-action@v3
@@ -81,7 +78,8 @@ jobs:
       - name: Vérifier les vulnérabilités
         run: |
           cd client
-          npm audit
+          npm audit --audit-level=high || true
+
 
   # -------------------------
   # Build frontend
