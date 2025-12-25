@@ -2,7 +2,7 @@ name: CI/CD workflow  # nom du workflow
 
 env:  # variables globales
   SERVER_USER: "root"
-  SERVER_IP: "5163.5.159.243"
+  SERVER_IP: "163.5.159.243"
 
 concurrency:  # règles de simultanéité
   group: ${{ github.workflow }}-${{ github.ref }}
