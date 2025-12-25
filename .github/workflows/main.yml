@@ -33,8 +33,7 @@ jobs:
         run: npm run lint
 
       - name: Verifier les vulnerabilites
-        run: npm audit
-
+        run: npm audit --audit-level=high
       - name: Executer les tests
         run: npm run test:ci
 
