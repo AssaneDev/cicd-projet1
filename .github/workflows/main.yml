@@ -1,67 +1,132 @@
-# Nom du workflow de CI/CD
-name: CI/CD workflow
+name: CI/CD workflow  # nom du workflow
 
-# Variables d'environnement globales utilisées dans le workflow
-env:
-  SERVER_USER: 'root' # Utilisateur du serveur
-  SERVER_IP: '163.5.159.243' # Adresse IP du serveur
+env:  # variables globales
+  SERVER_USER: "root"
+  SERVER_IP: "5163.5.159.243"
 
-# Paramètres pour gérer la concurrence des jobs
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }} # Groupe de concurrence basé sur le nom du workflow et la référence git
-  cancel-in-progress: true # Annule les jobs en cours si un nouveau job est lancé dans le même groupe
+concurrency:  # règles de simultanéité
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
-# Événement déclenchant le workflow
 on:
-  push: # Déclenché lors d'un push
-    branches: # Sur la branche spécifiée
-      - main # Branche "main"
+  push:
+    branches:
+      - main
 
-# Description des jobs à exécuter
 jobs:
-  # Job pour les tests
-  tests:
-    runs-on: ubuntu-latest # Exécute sur la dernière version d'Ubuntu
-    defaults: # Options par défaut pour les étapes
+
+  # -------------------------
+  # Tests backend
+  # -------------------------
+  tests_backend:
+    runs-on: ubuntu-latest
+    defaults:
       run:
-        working-directory: server # Dossier de travail par défaut
+        working-directory: server
     steps:
-      - name: checkout le code # Récupère le code source
-        uses: actions/checkout@v4 # Utilise l'action de checkout
+      - name: Checkout le code
+        uses: actions/checkout@v4
 
-      - name: installer Node.js # Installe Node.js
-        uses: actions/setup-node@v3 # Utilise l'action setup-node
-        with: # Options supplémentaires
-          cache: 'npm' # Met en cache les dépendances npm
-          cache-dependency-path: server/package-lock.json # Chemin du fichier package-lock.json
-
-      - name: installer les dépendances # Installe les dépendances npm
-        run: | # Commandes shell à exécuter
-          npm ci  # Installe les dépendances en mode "clean install"
-
-      - name: exécute les tests # Exécute les tests
-        run: |
-          npm run test:ci  # Exécute le script de test
-
-      - name: vérifie le code # Exécute le linter sur le code
-        run: |
-          npm run lint  # Exécute le script de lint
-
-      - name: vérifie les vulnérabilités # Vérifie les vulnérabilités des dépendances
-        run: |
-          npm audit  # Utilise npm audit pour identifier les vulnérabilités
-      - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v5
+      - name: Installer Node.js
+        uses: actions/setup-node@v3
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}    
+          cache: 'npm'
+          cache-dependency-path: server/package-lock.json
 
-  # Job pour le déploiement
-  deploy:
-    needs: tests
+      - name: Installer les dépendances
+        run: npm ci --prefer-offline
+
+      - name: Exécuter les tests
+        run: npm run test:ci
+
+      - name: Vérifier le code
+        run: npm run lint
+
+      - name: Vérifier les vulnérabilités
+        run: npm audit
+
+      - name: Upload du rapport de couverture
+        uses: codecov/codecov-action@v3
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  # -------------------------
+  # Checks frontend
+  # -------------------------
+  checks_frontend:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout le code
         uses: actions/checkout@v4
+
+      - name: Installer Node.js
+        uses: actions/setup-node@v3
+        with:
+          cache: 'npm'
+          cache-dependency-path: client/package-lock.json
+
+      - name: Installer les dépendances
+        run: |
+          cd client
+          npm ci --prefer-offline
+
+      - name: Vérifier le code frontend
+        run: |
+          cd client
+          npm run lint
+
+      - name: Vérifier les vulnérabilités
+        run: |
+          cd client
+          npm audit
+
+  # -------------------------
+  # Build frontend
+  # -------------------------
+  build_frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    needs: [checks_frontend]
+    steps:
+      - name: Checkout le code
+        uses: actions/checkout@v4
+
+      - name: Installer Node.js
+        uses: actions/setup-node@v3
+        with:
+          cache: 'npm'
+          cache-dependency-path: client/package-lock.json
+
+      - name: Installer les dépendances
+        run: npm ci --prefer-offline
+
+      - name: Build le frontend
+        run: npm run build
+
+      - name: Archiver les artefacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: client/dist/
+          retention-days: 1
+
+  # -------------------------
+  # Déploiement
+  # -------------------------
+  deploy:
+    needs: [tests_backend, build_frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout le code
+        uses: actions/checkout@v4
+
+      - name: Télécharger l'artéfact du frontend
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: ./dist
 
       - name: Installer rsync
         run: sudo apt-get update && sudo apt-get install -y rsync
@@ -73,12 +138,14 @@ jobs:
           mkdir -p ~/.ssh
           ssh-keyscan -H $SERVER_IP >> ~/.ssh/known_hosts
 
+          # Synchroniser frontend et backend
+          rsync -avz --delete ./dist/ $SERVER_USER@$SERVER_IP:/var/www/dist/
           rsync -avz --delete ./server/ $SERVER_USER@$SERVER_IP:/var/www/server/
 
+          # Installer les dépendances et démarrer PM2
           ssh $SERVER_USER@$SERVER_IP '
             export NVM_DIR="$HOME/.nvm"
             [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-
             cd /var/www/server &&
             npm install --omit=dev --no-audit --no-fund &&
             pm2 startOrRestart ecosystem.config.js --env production &&
