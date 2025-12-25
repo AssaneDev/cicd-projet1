@@ -50,6 +50,10 @@ jobs:
       - name: vérifie les vulnérabilités # Vérifie les vulnérabilités des dépendances
         run: |
           npm audit  # Utilise npm audit pour identifier les vulnérabilités
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}    
 
   # Job pour le déploiement
   deploy:
