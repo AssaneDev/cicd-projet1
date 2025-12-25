@@ -8,6 +8,7 @@ on:
   push:
     branches:
       - main
+
 jobs:
   tests:
     runs-on: ubuntu-latest
@@ -15,36 +16,44 @@ jobs:
       run:
         working-directory: ./server
     steps:
-        - name: checkout le code
-          uses: action/checkout@v4
-        - name: installer node.js
-          uses: actions/setup-node@v3
-          with:
-            cache: "npm"
-            cache-dependency-path: ./server/package-lock.json
-        - name: install dependencies
-          run: npm ci --cache .npm --prefer-offline
-        - name: verifie le code
-          run: npm run lint
-        - name: verifie les vulnérabiité des dépendence
-          run : npm audit           
-        - name: execute les tests
-          run: npm run test:ci
+      - name: Checkout le code
+        uses: actions/checkout@v4
+
+      - name: Installer Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: ./server/package-lock.json
+
+      - name: Installer les dependances
+        run: npm ci
+
+      - name: Verifier le code
+        run: npm run lint
+
+      - name: Verifier les vulnerabilites
+        run: npm audit
+
+      - name: Executer les tests
+        run: npm run test:ci
 
   deploy:
     needs: tests
     runs-on: ubuntu-latest
     steps:
-      - name: checkout le code
+      - name: Checkout le code
         uses: actions/checkout@v4
-      - name: deployer sur le serveur
+
+      - name: Deployer sur le serveur
         run: |
-             eval $(ssh-agent -s)
-             ssh-add - <<< " ${{ secrets.SSH_KEY_VPS }} "
-             mkdir -p ~/.ssh
-             ssh-keyscan -H $SERVER_IP >> ~/ .ssh/known_hosts
-             scp -r ./server $SERVER_USER@SERVER_IP:/var/www
-             ssh $SERVER_USER@SERVER_IP "cd /var/www/server && npm install --omit=dev"
-             ssh $SERVER_USER@SERVER_IP "cd /var/www/server && npm install pm2 startOrRestart ecosystem.config.js --env production && pm2 save"
+          eval $(ssh-agent -s)
+          ssh-add - <<< "${{ secrets.SSH_KEY_VPS }}"
+          mkdir -p ~/.ssh
+          ssh-keyscan -H $SERVER_IP >> ~/.ssh/known_hosts
 
+          scp -r ./server $SERVER_USER@$SERVER_IP:/var/www
 
+          ssh $SERVER_USER@$SERVER_IP "cd /var/www/server && npm install --omit=dev"
+          ssh $SERVER_USER@$SERVER_IP "npm install -g pm2"
+          ssh $SERVER_USER@$SERVER_IP "cd /var/www/server && pm2 startOrRestart ecosystem.config.js --env production && pm2 save"
